@@ -41,7 +41,86 @@ The base above is an inspection snapshot, not a permanent working branch. Refres
 
 ## Verification starting point
 
-No executable acceptance command was established by this bounded source inspection. Read `README.md` and record the narrowest existing check before implementation. Do not invent a `test` command or infer that the repository has no tests from this gap. For a documentation-only task, check links, factual source anchors and whitespace; do not build unrelated application code.
+From the repository root, run this Python 3 check of `templates/*-clipper.json` and the `Templates` list in `README.md`. It checks the shared `0.1.0` export fields, property names and catalog links. It accepts empty note content and property values, and allows exports that are not listed in the README.
+
+```sh
+python3 -IBS - <<'PY'
+import json
+import re
+from pathlib import Path
+
+
+def nonblank(value):
+    return isinstance(value, str) and bool(value.strip())
+
+
+def unique_keys(pairs):
+    obj = {}
+    for key, value in pairs:
+        if key in obj:
+            raise ValueError(f"duplicate JSON key {key!r}")
+        obj[key] = value
+    return obj
+
+
+directory = Path("templates")
+if directory.is_symlink() or not directory.is_dir():
+    raise SystemExit("Expected a local templates directory")
+exports = sorted(directory.glob("*-clipper.json"))
+if not exports:
+    raise SystemExit("No Clipper exports found in templates/")
+
+for path in exports:
+    if path.is_symlink() or not path.is_file() or path.stat().st_size > 64 * 1024:
+        raise SystemExit(f"{path}: expected a regular JSON file of at most 64 KiB")
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"), object_pairs_hook=unique_keys)
+    except ValueError as exc:
+        raise SystemExit(f"{path}: {exc}")
+    if not isinstance(data, dict) or data.get("schemaVersion") != "0.1.0":
+        raise SystemExit(f"{path}: expected a Clipper 0.1.0 export object")
+    for field in ("name", "behavior", "noteNameFormat", "path", "noteContentFormat"):
+        value = data.get(field)
+        if not isinstance(value, str) or (field not in {"path", "noteContentFormat"} and not value.strip()):
+            raise SystemExit(f"{path}: invalid or missing string field {field}")
+    triggers = data.get("triggers")
+    if not isinstance(triggers, list) or not all(map(nonblank, triggers)):
+        raise SystemExit(f"{path}: expected triggers to be an array of nonblank strings")
+    properties = data.get("properties")
+    if not isinstance(properties, list):
+        raise SystemExit(f"{path}: expected a properties array")
+    names = set()
+    for index, prop in enumerate(properties, 1):
+        if not isinstance(prop, dict) or not all(nonblank(prop.get(key)) for key in ("name", "type")) or not isinstance(prop.get("value"), str):
+            raise SystemExit(f"{path}: property {index} needs a name, type and string value")
+        name = prop["name"].strip()
+        if name in names:
+            raise SystemExit(f"{path}: repeated property name {name!r}")
+        names.add(name)
+
+lines = Path("README.md").read_text(encoding="utf-8").splitlines()
+try:
+    start = lines.index("## Templates") + 1
+except ValueError:
+    raise SystemExit("README.md: missing Templates section")
+filenames = {path.name for path in exports}
+listed = set()
+for number, row in enumerate(lines[start:], start + 1):
+    if row.startswith("#"):
+        break
+    if not row.startswith("- "):
+        continue
+    link = re.match(r"- \[[^\]]+\]\(/?templates/([\w.-]+-clipper\.json)\)(?=\s|$)", row)
+    if not link or link[1] not in filenames or link[1] in listed:
+        raise SystemExit(f"README.md:{number}: expected a unique link to a local Clipper export")
+    listed.add(link[1])
+if not listed:
+    raise SystemExit("README.md: no templates listed")
+print(f"Checked {len(exports)} exports and {len(listed)} README template links.")
+PY
+```
+
+Expect exit 0 and counts for exports and README links. This is a local format check, not proof that an export imports or renders correctly. Treat URL, schema and regex triggers and template expressions as inert strings: do not visit sites, install or launch Obsidian or a browser extension, evaluate expressions, or write to a vault.
 
 ## Required handoff result
 
