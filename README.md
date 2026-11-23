@@ -2,6 +2,8 @@ Templates for [Obsidian Web Clipper](https://github.com/obsidianmd/obsidian-clip
 
 To install templates, see instructions in the official [Obsidian Web Clipper documentation](https://help.obsidian.md/web-clipper/templates) repo.
 
+For template maintenance and offline checks, see the [swarm-ready handoff](SWARM_READY.md).
+
 ## Templates
 
 Generic and schema-based templates
